@@ -48,8 +48,9 @@ contract Token {
 
     /* Allows the owner to mint more tokens */
     function mint(address _to, uint256 _value) returns (bool) {
-    	require(msg.sender == owner);
-    	require(!sealed);
+    	require(msg.sender == owner);						 // Only the owner is allowed to mint
+    	require(!sealed);								     // Can only mint while unsealed
+    	require(balanceOf[_to] + _value >= balanceOf[_to]);  // Check for overflows
     	balanceOf[_to] += _value;
     	totalSupply += _value;
     	return true;
@@ -86,7 +87,6 @@ contract TokenGame {
 	uint constant initial_duration = 7 days;
 	uint constant time_extension_from_doubling = 7 days;
 	uint constant time_of_half_decay = 7 days;
-	uint256 constant fixed_point_multiplier = 2**128;
 	Token public excess_token; /* Token contract used to receive excess after the sale */
 	Withdraw excess_withdraw;  /* Withdraw contract distributing the excess */
  	Token public game_token;   /* Token contract used to receive prizes */
@@ -108,11 +108,10 @@ contract TokenGame {
 		require(now <= end_time);	// Check that the sale has not ended
 		require(msg.value > 0);     // Check that something has been sent
 		total_wei_given += msg.value;
-		uint decay_factor = time_of_half_decay * fixed_point_multiplier / (time_of_half_decay + (now - last_time) );
-		ema = msg.value * fixed_point_multiplier + decay_factor * ema;
-		uint time_extension = ema * time_extension_from_doubling / total_wei_given / fixed_point_multiplier;
-		if (now + time_extension > end_time) {
-			end_time = now + time_extension;
+		ema = msg.value + ema * time_of_half_decay / (time_of_half_decay + (now - last_time) );
+		uint extended_time = now + ema * time_extension_from_doubling / total_wei_given;
+		if (extended_time > end_time) {
+			end_time = extended_time;
 		}
 		if (!excess_token.mint(msg.sender, msg.value) || !game_token.mint(msg.sender, msg.value)) {
 			throw;

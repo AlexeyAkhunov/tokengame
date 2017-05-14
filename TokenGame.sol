@@ -74,8 +74,9 @@ contract Withdraw {
 	function withdraw() {
 		require(token.sealed());
 		require(token.balanceOf(msg.sender) > 0);
-		uint amount = token.balanceOf(msg.sender);
-		if (!token.transferFrom(msg.sender, this, amount) || !msg.sender.send(amount)) {
+		uint token_amount = token.balanceOf(msg.sender);
+		uint wei_amount = this.balance * token_amount / token.totalSupply();
+		if (!token.transferFrom(msg.sender, this, token_amount) || !msg.sender.send(wei_amount)) {
 			throw;
 		}
 	}

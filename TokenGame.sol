@@ -109,6 +109,7 @@ contract TokenGame {
 		require(msg.value > 0);     // Check that something has been sent
 		total_wei_given += msg.value;
 		ema = msg.value + ema * time_of_half_decay / (time_of_half_decay + (now - last_time) );
+		last_time = now;
 		uint extended_time = now + ema * time_extension_from_doubling / total_wei_given;
 		if (extended_time > end_time) {
 			end_time = extended_time;

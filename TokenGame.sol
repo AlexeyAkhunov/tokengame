@@ -104,7 +104,7 @@ contract TokenGame {
 		end_time = now + initial_duration;
 	}
 
-	function () payable {
+	function play() payable {
 		require(now <= end_time);	// Check that the sale has not ended
 		require(msg.value > 0);     // Check that something has been sent
 		total_wei_given += msg.value;

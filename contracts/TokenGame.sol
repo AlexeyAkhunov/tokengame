@@ -94,14 +94,14 @@ contract TokenGame {
     uint public end_time;      /* Current end time */
     uint last_time = 0;        /* Timestamp of the latest contribution */
     uint256 ema = 0;           /* Current value of the EMA */
-    uint total_wei_given = 0;  /* Total amount of wei given via fallback function */
+    uint public total_wei_given = 0;  /* Total amount of wei given via fallback function */
 
     function TokenGame(uint _cap_in_wei) {
         owner = msg.sender;
         cap_in_wei = _cap_in_wei;
-        excess_token = Token(1);
+        excess_token = new Token(1);
         excess_withdraw = Withdraw(excess_token);
-        game_token = Token(2);
+        game_token = new Token(2);
         end_time = now + initial_duration;
     }
 
@@ -134,4 +134,8 @@ contract TokenGame {
             }
         }
     }
+}
+
+contract ZeroCap is TokenGame {
+    function ZeroCap() TokenGame(0) {}
 }

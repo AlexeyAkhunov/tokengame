@@ -2,6 +2,7 @@ import org.ethereum.crypto.ECKey
 import org.ethereum.solidity.compiler.CompilationResult
 import org.ethereum.solidity.compiler.SolidityCompiler
 import org.ethereum.util.blockchain.StandaloneBlockchain
+import org.ethereum.util.blockchain.SolidityContract
 import org.junit.Before
 import org.junit.Test
 import java.io.File
@@ -25,6 +26,9 @@ class TokenGame {
         }
         val tokenGame by lazy {
             compiledContract["TokenGame"]!!
+        }
+        val zeroCap by lazy {
+            compiledContract["ZeroCap"]!!
         }
         val alice = ECKey()
         val bob = ECKey()
@@ -50,11 +54,20 @@ class TokenGame {
     }
 
     @Test
-    fun `only owner can transfer ownership`() {
+    fun `game token creation`() {
         blockchain.sender = alice
-        val game = blockchain.submitNewContract(tokenGame, aliceAddress)
+        val game = blockchain.submitNewContract(tokenGame, 0)
+        val excess_token_addr = game.callConstFunction("excess_token")[0] as ByteArray
+        val excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
+        val game_token_addr = game.callConstFunction("game_token")[0] as ByteArray
+        println(game_token_addr)
+        val game_token = blockchain.createExistingContractFromABI(token.abi, game_token_addr)
         blockchain.sender = bob
-        val result = game.callFunction("play")
-        assertFalse(result.isSuccessful)
+        val result = game.callFunction(1000000L, "play")
+        assertTrue(result.isSuccessful)
+        val total_wei_given = game.callConstFunction("total_wei_given")[0] as java.math.BigInteger
+        assertEquals(BigInteger("1000000"), total_wei_given)
+        val bob_game_tokens = game_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger
+        assertEquals(BigInteger("1000000"), bob_game_tokens)
     }
 }

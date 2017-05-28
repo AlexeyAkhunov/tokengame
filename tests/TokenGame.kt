@@ -60,7 +60,6 @@ class TokenGame {
         val excess_token_addr = game.callConstFunction("excess_token")[0] as ByteArray
         val excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
         val game_token_addr = game.callConstFunction("game_token")[0] as ByteArray
-        println(game_token_addr)
         val game_token = blockchain.createExistingContractFromABI(token.abi, game_token_addr)
         blockchain.sender = bob
         val result = game.callFunction(1000000L, "play")

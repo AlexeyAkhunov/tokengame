@@ -9,6 +9,7 @@ import java.io.File
 import java.math.BigInteger
 import java.util.*
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 
 class TokenGame {
@@ -37,6 +38,9 @@ class TokenGame {
     }
 
     lateinit var blockchain: StandaloneBlockchain
+    lateinit var game: SolidityContract
+    lateinit var game_token: SolidityContract
+    lateinit var excess_token: SolidityContract
     val aliceAddress get() = BigInteger(1, alice.address)
     val bobAddress get() = BigInteger(1, bob.address)
     val carolAddress get() = BigInteger(1, carol.address)
@@ -51,22 +55,28 @@ class TokenGame {
                 .withAccountBalance(carol.address, BigInteger.ZERO)
                 .withAccountBalance(dan.address, BigInteger.ONE)
         blockchain.createBlock()
+        blockchain.sender = alice
+        game = blockchain.submitNewContract(tokenGame, 0)
+        val game_token_addr = game.callConstFunction("game_token")[0] as ByteArray
+        game_token = blockchain.createExistingContractFromABI(token.abi, game_token_addr)
+        val excess_token_addr = game.callConstFunction("excess_token")[0] as ByteArray
+        excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
     }
 
     @Test
     fun `game token creation`() {
-        blockchain.sender = alice
-        val game = blockchain.submitNewContract(tokenGame, 0)
-        val excess_token_addr = game.callConstFunction("excess_token")[0] as ByteArray
-        val excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
-        val game_token_addr = game.callConstFunction("game_token")[0] as ByteArray
-        val game_token = blockchain.createExistingContractFromABI(token.abi, game_token_addr)
         blockchain.sender = bob
         val result = game.callFunction(1000000L, "play")
         assertTrue(result.isSuccessful)
-        val total_wei_given = game.callConstFunction("total_wei_given")[0] as java.math.BigInteger
-        assertEquals(BigInteger("1000000"), total_wei_given)
-        val bob_game_tokens = game_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger
-        assertEquals(BigInteger("1000000"), bob_game_tokens)
+        assertEquals(BigInteger("1000000"), game.callConstFunction("total_wei_given")[0] as java.math.BigInteger)
+        assertEquals(BigInteger("1000000"), game_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+        assertEquals(BigInteger("1000000"), excess_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+        assertEquals(BigInteger("1000000"), blockchain.blockchain.repository.getBalance(game.address))
+    }
+
+    @Test
+    fun `finalize before end time`() {
+        val result = game.callFunction("finalise")
+        assertFalse(result.isSuccessful)
     }
 }

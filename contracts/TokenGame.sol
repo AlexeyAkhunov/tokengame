@@ -89,7 +89,7 @@ contract TokenGame {
     uint constant time_extension_from_doubling = 7 days;
     uint constant time_of_half_decay = 7 days;
     Token public excess_token; /* Token contract used to receive excess after the sale */
-    Withdraw excess_withdraw;  /* Withdraw contract distributing the excess */
+    Withdraw public excess_withdraw;  /* Withdraw contract distributing the excess */
     Token public game_token;   /* Token contract used to receive prizes */
     uint public end_time;      /* Current end time */
     uint last_time = 0;        /* Timestamp of the latest contribution */

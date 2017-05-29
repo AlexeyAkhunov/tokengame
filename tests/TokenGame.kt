@@ -41,6 +41,7 @@ class TokenGame {
     lateinit var game: SolidityContract
     lateinit var game_token: SolidityContract
     lateinit var excess_token: SolidityContract
+    lateinit var excess_withdraw: SolidityContract
     val aliceAddress get() = BigInteger(1, alice.address)
     val bobAddress get() = BigInteger(1, bob.address)
     val carolAddress get() = BigInteger(1, carol.address)
@@ -56,11 +57,13 @@ class TokenGame {
                 .withAccountBalance(dan.address, BigInteger.ONE)
         blockchain.createBlock()
         blockchain.sender = alice
-        game = blockchain.submitNewContract(tokenGame, 0)
+        game = blockchain.submitNewContract(tokenGame, 1) // cap is 1 wei
         val game_token_addr = game.callConstFunction("game_token")[0] as ByteArray
         game_token = blockchain.createExistingContractFromABI(token.abi, game_token_addr)
         val excess_token_addr = game.callConstFunction("excess_token")[0] as ByteArray
         excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
+        val excess_withdraw_addr = game.callConstFunction("excess_withdraw")[0] as ByteArray
+        excess_withdraw = blockchain.createExistingContractFromABI(withdraw.abi, excess_withdraw_addr)
     }
 
     @Test
@@ -89,7 +92,11 @@ class TokenGame {
         val block = blockchain.createBlock();
         assertTrue(block.header.timestamp > end_time.toLong())
         blockchain.sender = bob
+        val alice_before_finalise = blockchain.blockchain.repository.getBalance(alice.address)
         val result = game.callFunction("finalise")
         assertTrue(result.isSuccessful)
+        val alice_after_finalise = blockchain.blockchain.repository.getBalance(alice.address)
+        assertEquals(BigInteger.ONE, alice_after_finalise - alice_before_finalise)
+        assertEquals(BigInteger("999999"), blockchain.blockchain.repository.getBalance(excess_withdraw.address))
     }
 }

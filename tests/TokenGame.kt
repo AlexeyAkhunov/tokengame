@@ -75,8 +75,21 @@ class TokenGame {
     }
 
     @Test
-    fun `finalize before end time`() {
+    fun `finalise before end time`() {
         val result = game.callFunction("finalise")
         assertFalse(result.isSuccessful)
+    }
+
+    @Test
+    fun `finalise after the end time`() {
+        blockchain.sender = bob
+        game.callFunction(1000000L, "play")
+        val end_time = game.callConstFunction("end_time")[0] as BigInteger
+        blockchain = blockchain.withCurrentTime(Date(end_time.toLong()*1000L))
+        val block = blockchain.createBlock();
+        assertTrue(block.header.timestamp > end_time.toLong())
+        blockchain.sender = bob
+        val result = game.callFunction("finalise")
+        assertTrue(result.isSuccessful)
     }
 }

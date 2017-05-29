@@ -100,7 +100,7 @@ contract TokenGame {
         owner = msg.sender;
         cap_in_wei = _cap_in_wei;
         excess_token = new Token(1);
-        excess_withdraw = Withdraw(excess_token);
+        excess_withdraw = new Withdraw(excess_token);
         game_token = new Token(2);
         end_time = now + initial_duration;
     }
@@ -124,12 +124,17 @@ contract TokenGame {
         require(now > end_time);
         excess_token.seal();
         game_token.seal();
+        uint to_owner = 0;
         if (this.balance > cap_in_wei) {
-            if (!excess_withdraw.send(this.balance - cap_in_wei) || !owner.send(cap_in_wei)) {
+            to_owner = cap_in_wei;
+            if (!excess_withdraw.send(this.balance - cap_in_wei)) {
                 throw;
             }
         } else {
-            if (!owner.send(this.balance)) {
+            to_owner = this.balance;
+        }
+        if (to_owner > 0) {
+            if (!owner.send(to_owner)) {
                 throw;
             }
         }

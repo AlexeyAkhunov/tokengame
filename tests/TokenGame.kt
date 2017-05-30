@@ -98,5 +98,33 @@ class TokenGame {
         val alice_after_finalise = blockchain.blockchain.repository.getBalance(alice.address)
         assertEquals(BigInteger.ONE, alice_after_finalise - alice_before_finalise)
         assertEquals(BigInteger("999999"), blockchain.blockchain.repository.getBalance(excess_withdraw.address))
+        // Bob withdraws
+        blockchain.sender = bob
+        val approveResult = excess_token.callFunction("approve", excess_withdraw.address, BigInteger("1000000"))
+        assertTrue(approveResult.isSuccessful)
+        val withdrawResult = excess_withdraw.callFunction("withdraw")
+        assertTrue(withdrawResult.isSuccessful)
+        assertEquals(BigInteger.ZERO, blockchain.blockchain.repository.getBalance(excess_withdraw.address))
+    }
+
+    @Test
+    fun `play after the end time`() {
+        blockchain.sender = bob
+        game.callFunction(1000000L, "play")
+        val end_time = game.callConstFunction("end_time")[0] as BigInteger
+        blockchain = blockchain.withCurrentTime(Date(end_time.toLong()*1000L))
+        val block = blockchain.createBlock();
+        assertTrue(block.header.timestamp > end_time.toLong())
+        val result = game.callFunction(1000000L, "play")
+        assertFalse(result.isSuccessful)
+    }
+
+    @Test
+    fun `strangers cannot mint`() {
+        blockchain.sender = bob
+        val mintResult1 = game_token.callFunction("mint", bob.address, BigInteger.ONE)
+        assertFalse(mintResult1.isSuccessful)
+        val mintResult2 = excess_token.callFunction("mint", bob.address, BigInteger.ONE)
+        assertFalse(mintResult2.isSuccessful)
     }
 }

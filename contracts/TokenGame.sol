@@ -75,7 +75,7 @@ contract Withdraw {
         require(token.sealed());
         require(token.balanceOf(msg.sender) > 0);
         uint token_amount = token.balanceOf(msg.sender);
-        uint wei_amount = this.balance * token_amount / token.totalSupply();
+        uint wei_amount = this.balance * token_amount / (token.totalSupply() - token.balanceOf(this));
         if (!token.transferFrom(msg.sender, this, token_amount) || !msg.sender.send(wei_amount)) {
             throw;
         }
@@ -85,9 +85,9 @@ contract Withdraw {
 contract TokenGame {
     address public owner;
     uint public cap_in_wei;
-    uint constant initial_duration = 7 days;
-    uint constant time_extension_from_doubling = 7 days;
-    uint constant time_of_half_decay = 7 days;
+    uint constant initial_duration = 1 hours;
+    uint constant time_extension_from_doubling = 1 hours;
+    uint constant time_of_half_decay = 1 hours;
     Token public excess_token; /* Token contract used to receive excess after the sale */
     Withdraw public excess_withdraw;  /* Withdraw contract distributing the excess */
     Token public game_token;   /* Token contract used to receive prizes */
@@ -142,5 +142,9 @@ contract TokenGame {
 }
 
 contract ZeroCap is TokenGame {
-    function ZeroCap() TokenGame(0) {}
+    Withdraw public game_withdraw;
+
+    function ZeroCap() TokenGame(0) {
+        game_withdraw = new Withdraw(game_token);
+    }
 }

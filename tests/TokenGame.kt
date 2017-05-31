@@ -127,4 +127,38 @@ class TokenGame {
         val mintResult2 = excess_token.callFunction("mint", bob.address, BigInteger.ONE)
         assertFalse(mintResult2.isSuccessful)
     }
+
+    @Test
+    fun `all ether distributed from withdraw`() {
+        blockchain.sender = bob
+        game.callFunction(1000000L, "play")
+        blockchain.sender = alice
+        game.callFunction(1000000L, "play") // Both bob and alice play
+        val end_time = game.callConstFunction("end_time")[0] as BigInteger
+        blockchain = blockchain.withCurrentTime(Date(end_time.toLong()*1000L))
+        val block = blockchain.createBlock();
+        assertTrue(block.header.timestamp > end_time.toLong())
+        blockchain.sender = bob
+        val alice_before_finalise = blockchain.blockchain.repository.getBalance(alice.address)
+        val result = game.callFunction("finalise")
+        assertTrue(result.isSuccessful)
+        val alice_after_finalise = blockchain.blockchain.repository.getBalance(alice.address)
+        assertEquals(BigInteger.ONE, alice_after_finalise - alice_before_finalise)
+        assertEquals(BigInteger("1999999"), blockchain.blockchain.repository.getBalance(excess_withdraw.address))
+        // Bob withdraws
+        blockchain.sender = bob
+        val approveResult1 = excess_token.callFunction("approve", excess_withdraw.address, BigInteger("1000000"))
+        assertTrue(approveResult1.isSuccessful)
+        val withdrawResult1 = excess_withdraw.callFunction("withdraw")
+        assertTrue(withdrawResult1.isSuccessful)
+        // Alice withdraws
+        blockchain.sender = alice
+        val approveResult2 = excess_token.callFunction("approve", excess_withdraw.address, BigInteger("1000000"))
+        assertTrue(approveResult2.isSuccessful)
+        val withdrawResult2 = excess_withdraw.callFunction("withdraw")
+        assertTrue(withdrawResult2.isSuccessful)
+        // Withdraw contract should now be empty
+        assertEquals(BigInteger.ZERO, blockchain.blockchain.repository.getBalance(excess_withdraw.address))
+
+    }
 }

@@ -77,18 +77,18 @@ contract ExcessWithdraw {
     }
 }
 
-contract TokenSale {
+contract TokenDistribution {
     address public owner;
     uint public target_in_wei;                                 /* Minimum amount to collect - otherwise return everything */
     uint public cap_in_wei;                                    /* Maximum amount to accept - return the rest */
-    uint public tokens_to_sell;                                /* How many tokens need to be issued */
+    uint public tokens_to_mint;                                /* How many tokens need to be issued */
     uint constant INITIAL_DURATION = 1 hours;
     uint constant TIME_EXTENSION_FROM_DOUBLING = 1 hours;
     uint constant TIME_OF_HALF_DECAY = 1 hours;
     uint constant MAX_LOCK_WEEKS = 100;                        /* Maximum number of weeks that the excess contribution can be locked for */
     uint constant FIXED_POINT_ONE = 1000000000000;             /* Equivalent of number "1" for fixed point arithmetics */
     uint constant FIXED_POINT_PRC = 1070000000000;             /* Equivalent of number "1.07" for fixed point arithmetics */
-    Token public sold_token;                                   /* Token contract where sold tokens are minted */
+    Token public token;                                        /* Token contract where sold tokens are minted */
     uint public end_time;                                      /* Current end time */
     uint last_time = 0;                                        /* Timestamp of the latest contribution */
     uint256 ema = 0;                                           /* Current value of the EMA */
@@ -102,17 +102,17 @@ contract TokenSale {
     uint public last_bucket_closed = MAX_LOCK_WEEKS + 1;       /* Counter (goes from max_lock_weeks to 0) used to finalise bucket by bucket */
     uint public cap_remainder;                                 /* As the buckets are getting closed, the cap_remainder reduced to what is left to allocate */
 
-    function TokenSale(uint _target_in_wei, uint _cap_in_wei, uint _tokens_to_sell) {
+    function TokenDistribution(uint _target_in_wei, uint _cap_in_wei, uint _tokens_to_mint) {
         owner = msg.sender;
         target_in_wei = _target_in_wei;
         cap_in_wei = _cap_in_wei;
         cap_remainder = _cap_in_wei;
-        tokens_to_sell = _tokens_to_sell;
-        sold_token = new Token(MAX_LOCK_WEEKS + 1);
+        tokens_to_mint = _tokens_to_mint;
+        token = new Token(MAX_LOCK_WEEKS + 1);
         end_time = now + INITIAL_DURATION;
     }
 
-    function play(uint lock_weeks) payable {
+    function contribute(uint lock_weeks) payable {
         require(now <= end_time);   // Check that the sale has not ended
         require(msg.value > 0);     // Check that something has been sent
         require(lock_weeks <= MAX_LOCK_WEEKS);
@@ -180,8 +180,8 @@ contract TokenSale {
                 require(player.send(contribution));
             } else {
                 uint wei_accepted = contribution * total_wei_accepted / wei_accepted_from_bucket[bucket];
-                uint tokens = wei_accepted * tokens_to_sell / total_wei_accepted;
-                require(tokens == 0 || sold_token.mint(player, tokens));
+                uint tokens = wei_accepted * tokens_to_mint / total_wei_accepted;
+                require(tokens == 0 || token.mint(player, tokens));
                 Token excess_token = excess_tokens[bucket];
                 uint excess = contribution - wei_accepted;
                 require(excess == 0 || excess_token.mint(player, excess));
@@ -192,36 +192,36 @@ contract TokenSale {
 }
 
 contract PrizePot {
-    TokenSale public sale;
+    TokenDistribution public dist;
 
-    function PrizePot(TokenSale _sale) {
-        sale = _sale;
+    function PrizePot(TokenDistribution _dist) {
+        dist = _dist;
     }
 
     function() payable {}
 
     function claim_prize() {
-        require(sale.total_wei_given() >= sale.target_in_wei());
-        Token token = sale.sold_token();
+        require(dist.total_wei_given() >= dist.target_in_wei());
+        Token token = dist.token();
         uint token_amount = token.balanceOf(msg.sender);
-        uint wei_amount = this.balance * token_amount / (sale.tokens_to_sell() - token.balanceOf(this));
+        uint wei_amount = this.balance * token_amount / (dist.tokens_to_mint() - token.balanceOf(this));
         if (!token.transferFrom(msg.sender, this, token_amount) || !msg.sender.send(wei_amount)) {
             throw;
         }
     }
 
     function cancel() {
-        require(sale.last_bucket_closed() == 0);
-        require(sale.total_wei_given() < sale.target_in_wei());
-        require(sale.owner().send(this.balance));
+        require(dist.last_bucket_closed() == 0);
+        require(dist.total_wei_given() < dist.target_in_wei());
+        require(dist.owner().send(this.balance));
     } 
 }
 
-contract TokenGame is TokenSale {
+contract TokenGame is TokenDistribution {
 
     PrizePot public prize_pot;
 
-    function TokenGame() TokenSale(0, 0, 1000) {
+    function TokenGame() TokenDistribution(0, 0, 1000) {
         prize_pot = new PrizePot(this);
     }
 }

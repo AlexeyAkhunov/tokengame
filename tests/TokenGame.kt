@@ -43,8 +43,6 @@ class TokenGame {
     lateinit var blockchain: StandaloneBlockchain
     lateinit var dist: SolidityContract
     lateinit var dist_token: SolidityContract
-    lateinit var excess_token: SolidityContract
-    lateinit var excess_withdraw: SolidityContract
     val aliceAddress get() = BigInteger(1, alice.address)
     val bobAddress get() = BigInteger(1, bob.address)
     val carolAddress get() = BigInteger(1, carol.address)
@@ -65,12 +63,45 @@ class TokenGame {
         dist_token = blockchain.createExistingContractFromABI(token.abi, dist_token_addr)
     }
 
+    fun fast_forward_past_end_time() {
+        val end_time = dist.callConstFunction("end_time")[0] as BigInteger
+        blockchain = blockchain.withCurrentTime(Date(end_time.toLong()*1000L))
+        val block = blockchain.createBlock();
+        assertTrue(block.header.timestamp > end_time.toLong())
+    }
+
+    fun contribute(sender: ECKey, amount: Long, lock_weeks: Int): Boolean {
+        blockchain.sender = sender
+        return dist.callFunction(amount, "contribute", lock_weeks).isSuccessful
+    }
+
+    fun close_next_bucket(sender: ECKey): Boolean {
+        blockchain.sender = sender
+        return dist.callFunction("close_next_bucket").isSuccessful
+    }
+
+    fun claim_tokens(sender: ECKey, player: ECKey, bucket: String): Boolean {
+        blockchain.sender = sender
+        return dist.callFunction("claim_tokens", player.address, BigInteger(bucket)).isSuccessful
+    }
+
+    fun withdraw_from_bucket(sender: ECKey, bucket: String): Boolean {
+        val excess_withdraw_addr = dist.callConstFunction("excess_withdraws", BigInteger(bucket))[0] as ByteArray
+        val excess_withdraw = blockchain.createExistingContractFromABI(excessWithdraw.abi, excess_withdraw_addr)
+        val excess_token_addr = dist.callConstFunction("excess_tokens", BigInteger(bucket))[0] as ByteArray
+        val excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
+        blockchain.sender = sender
+        val approveResult = excess_token.callFunction("approve", excess_withdraw_addr, BigInteger("1000000"))
+        assertTrue(approveResult.isSuccessful)
+        val withdrawResult = excess_withdraw.callFunction("withdraw")
+        assertTrue(withdrawResult.isSuccessful)
+        return approveResult.isSuccessful && withdrawResult.isSuccessful
+    }
+
     @Test
     fun `game token creation`() {
-        blockchain.sender = bob
-        val result = dist.callFunction(1000000L, "contribute", 0)
-        assertTrue(result.isSuccessful)
-        assertEquals(BigInteger("1000000"), dist.callConstFunction("total_wei_given")[0] as java.math.BigInteger)
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("total_wei_given")[0] as BigInteger)
         assertEquals(BigInteger("1000000"), blockchain.blockchain.repository.getBalance(dist.address))
     }
 
@@ -79,5 +110,30 @@ class TokenGame {
         blockchain.sender = bob
         val mintResult1 = dist_token.callFunction("mint", bob.address, BigInteger.ONE)
         assertFalse(mintResult1.isSuccessful)
+    }
+
+    @Test
+    fun `contribute after end time`() {
+        fast_forward_past_end_time()
+        assertFalse(contribute(bob, 1000000L, 0))
+    }
+
+    @Test
+    fun `close bucket before end time`() {
+        assertFalse(close_next_bucket(bob))
+    }
+
+    @Test
+    fun `close bucket zero`() {
+        assertTrue(contribute(bob, 1000000L, 0))
+        fast_forward_past_end_time()
+        val bob_balance_before = blockchain.blockchain.repository.getBalance(bob.address)
+        assertTrue(close_next_bucket(bob))
+        val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
+        assertEquals(BigInteger.ZERO, dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
+        // 1M gas to be paid to iterate through 100 buckets down to number 0 and close zero bucket
+        assertEquals(BigInteger("1030415"), (bob_balance_before - bob_balance_after)/BigInteger("50000000000"))
+        assertTrue(claim_tokens(bob, bob, "0"))
+        assertTrue(withdraw_from_bucket(bob, "0"))
     }
 }

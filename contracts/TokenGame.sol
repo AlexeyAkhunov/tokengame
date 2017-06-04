@@ -10,7 +10,7 @@ contract Token {
     /* This generates a public event on the blockchain that will notify clients */
     event Transfer(address indexed from, address indexed to, uint256 value);
 
-    /* Send coins */
+    /* Send tokens */
     function transfer(address _to, uint256 _value) {
         require(balanceOf[msg.sender] >= _value);            // Check if the sender has enough
         require(balanceOf[_to] + _value >= balanceOf[_to]);  // Check for overflows
@@ -25,7 +25,7 @@ contract Token {
         return true;
     }
 
-    /* A contract attempts to get the coins */
+    /* A contract attempts to get the tokens */
     function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
         require(balanceOf[_from] >= _value);                 // Check if the sender has enough
         require(balanceOf[_to] + _value >= balanceOf[_to]);  // Check for overflows
@@ -94,8 +94,8 @@ contract TokenDistribution {
     uint256 ema = 0;                                           /* Current value of the EMA */
     uint public total_wei_given = 0;                           /* Total amount of wei given via fallback function */
     uint public total_wei_accepted = 0;                        /* Total amount of wei accepted */
-    mapping (uint => Token) excess_tokens;                     /* Excess tokens organised by lock weeks */
-    mapping (uint => ExcessWithdraw) excess_withdraws;                /* Excess withdraw contracts organised by lock weeks */
+    mapping (uint => Token) public excess_tokens;              /* Excess tokens organised by lock weeks */
+    mapping (uint => ExcessWithdraw) public excess_withdraws;  /* Excess withdraw contracts organised by lock weeks */
     mapping (uint => uint) wei_given_to_bucket;                       /* Amount of wei given to specific bucket (lock_weeks is key in the mapping) */
     mapping (uint => uint) wei_accepted_from_bucket;                  /* Amount of wei accepted from specific bucket (lock_weeks is the key in the mapping) */
     mapping (address => mapping (uint => uint)) public contributions; /* Contributions of a participant (first key) to a bucket (second key) */

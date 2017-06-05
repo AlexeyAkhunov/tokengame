@@ -144,7 +144,11 @@ contract TokenDistribution {
         total_wei_given += msg.value;
         ema = msg.value + exponential_decay(ema, now - last_time);
         last_time = now;
-        uint extended_time = now + ema * TIME_EXTENSION_FROM_DOUBLING / total_wei_given;
+        uint extension = ema * TIME_EXTENSION_FROM_DOUBLING / total_wei_given;
+        if (extension > TIME_EXTENSION_FROM_DOUBLING) {
+            extension = TIME_EXTENSION_FROM_DOUBLING;
+        }
+        uint extended_time = now + extension;
         if (extended_time > end_time) {
             end_time = extended_time;
         }

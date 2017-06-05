@@ -267,6 +267,18 @@ class TokenGame {
         assertTrue(contribute(bob, 100000L, 0))
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         val gas = (bob_balance_before - bob_balance_after - BigInteger("1000000"))/BigInteger("50000000000")
-        assertEquals(BigInteger("51553"), gas)
+        assertEquals(BigInteger("51592"), gas)
+    }
+
+    @Test
+    fun `time extension cap`() {
+        assertTrue(contribute(bob, 1000000L, 0))
+        val end_time_1 = dist.callConstFunction("end_time")[0] as BigInteger
+        fast_forward_to_before_end_time()
+        // Contribute 100 times more
+        assertTrue(contribute(eva, 100000000L, 0))
+        val end_time_2 = dist.callConstFunction("end_time")[0] as BigInteger
+        // Extension time is capped - one week
+        assertEquals(BigInteger("598824"), end_time_2 - end_time_1)
     }
 }

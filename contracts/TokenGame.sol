@@ -82,22 +82,22 @@ contract TokenDistribution {
     uint public target_in_wei;                                 /* Minimum amount to collect - otherwise return everything */
     uint public cap_in_wei;                                    /* Maximum amount to accept - return the rest */
     uint public tokens_to_mint;                                /* How many tokens need to be issued */
-    uint constant INITIAL_DURATION = 1 hours;
-    uint constant TIME_EXTENSION_FROM_DOUBLING = 1 hours;
-    uint constant TIME_OF_HALF_DECAY = 1 hours;
+    uint constant INITIAL_DURATION = 1 weeks;
+    uint constant TIME_EXTENSION_FROM_DOUBLING = 1 weeks;
+    uint constant TIME_OF_HALF_DECAY = 1 days;
     uint constant MAX_LOCK_WEEKS = 100;                        /* Maximum number of weeks that the excess contribution can be locked for */
     uint constant FIXED_POINT_ONE = 1000000000000;             /* Equivalent of number "1" for fixed point arithmetics */
     uint constant FIXED_POINT_PRC = 1070000000000;             /* Equivalent of number "1.07" for fixed point arithmetics */
     Token public token;                                        /* Token contract where sold tokens are minted */
     uint public end_time;                                      /* Current end time */
     uint last_time = 0;                                        /* Timestamp of the latest contribution */
-    uint256 ema = 0;                                           /* Current value of the EMA */
+    uint256 public ema = 0;                                    /* Current value of the EMA */
     uint public total_wei_given = 0;                           /* Total amount of wei given via fallback function */
     uint public total_wei_accepted = 0;                        /* Total amount of wei accepted */
     mapping (uint => Token) public excess_tokens;              /* Excess tokens organised by lock weeks */
     mapping (uint => ExcessWithdraw) public excess_withdraws;  /* Excess withdraw contracts organised by lock weeks */
-    mapping (uint => uint) wei_given_to_bucket;                       /* Amount of wei given to specific bucket (lock_weeks is key in the mapping) */
-    mapping (uint => uint) wei_accepted_from_bucket;                  /* Amount of wei accepted from specific bucket (lock_weeks is the key in the mapping) */
+    mapping (uint => uint) public wei_given_to_bucket;         /* Amount of wei given to specific bucket (lock_weeks is key in the mapping) */
+    mapping (uint => uint) public wei_accepted_from_bucket;    /* Amount of wei accepted from specific bucket (lock_weeks is the key in the mapping) */
     mapping (address => mapping (uint => uint)) public contributions; /* Contributions of a participant (first key) to a bucket (second key) */
     uint public last_bucket_closed = MAX_LOCK_WEEKS + 1;       /* Counter (goes from max_lock_weeks to 0) used to finalise bucket by bucket */
     uint public cap_remainder;                                 /* As the buckets are getting closed, the cap_remainder reduced to what is left to allocate */
@@ -134,8 +134,8 @@ contract TokenDistribution {
         while (bucket > 0 && wei_given_to_bucket[bucket] == 0) {
             bucket--;
         }
-        if (wei_given_to_bucket[bucket] > 0) {
-            uint bucket_contribution = wei_given_to_bucket[bucket];
+        uint bucket_contribution = wei_given_to_bucket[bucket];
+        if (bucket_contribution > 0) {
             // Current bucket will get the biggest contritubion multiplier (due to highest lock time)
             // The muliplier decays by 1.07 as the lock time decreased by a week
             uint contribution_multiplier = FIXED_POINT_ONE;
@@ -144,7 +144,7 @@ contract TokenDistribution {
             while (b > 0) {
                 b--;
                 contribution_multiplier = contribution_multiplier * FIXED_POINT_ONE / FIXED_POINT_PRC;
-                contribution_sum += wei_given_to_bucket[b] * contribution_multiplier;
+                contribution_sum += wei_given_to_bucket[b] * contribution_multiplier / FIXED_POINT_ONE;
             }
             // Compute accepted contribution for this bucket
             uint accepted = cap_remainder * wei_given_to_bucket[bucket] / contribution_sum;
@@ -153,6 +153,7 @@ contract TokenDistribution {
             }
             wei_accepted_from_bucket[bucket] = accepted;
             total_wei_accepted += accepted;
+            cap_remainder -= accepted;
             if (accepted < bucket_contribution) {
                 // Only call if there is an excess
                 move_excess_for_bucket(bucket, bucket_contribution - accepted);
@@ -179,7 +180,7 @@ contract TokenDistribution {
                 // Did not reach the target, return everything
                 require(player.send(contribution));
             } else {
-                uint wei_accepted = contribution * total_wei_accepted / wei_accepted_from_bucket[bucket];
+                uint wei_accepted = contribution * wei_accepted_from_bucket[bucket] / wei_given_to_bucket[bucket];
                 uint tokens = wei_accepted * tokens_to_mint / total_wei_accepted;
                 require(tokens == 0 || token.mint(player, tokens));
                 Token excess_token = excess_tokens[bucket];

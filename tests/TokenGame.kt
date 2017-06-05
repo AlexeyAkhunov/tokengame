@@ -38,6 +38,7 @@ class TokenGame {
         val bob = ECKey()
         val carol = ECKey()
         val dan = ECKey()
+        val eva = ECKey()
     }
 
     lateinit var blockchain: StandaloneBlockchain
@@ -47,6 +48,7 @@ class TokenGame {
     val bobAddress get() = BigInteger(1, bob.address)
     val carolAddress get() = BigInteger(1, carol.address)
     val danAddress get() = BigInteger(1, dan.address)
+    val evaAddress get() = BigInteger(1, eva.address)
 
     @Before
     fun `setup`() {
@@ -56,18 +58,27 @@ class TokenGame {
                 .withAccountBalance(bob.address, BigInteger.valueOf(2).pow(128))
                 .withAccountBalance(carol.address, BigInteger.ZERO)
                 .withAccountBalance(dan.address, BigInteger.ONE)
+                .withAccountBalance(eva.address, BigInteger.valueOf(2).pow(128))
         blockchain.createBlock()
         blockchain.sender = alice
-        dist = blockchain.submitNewContract(tokenDist, 1, 1, 1000000L) // target and cap are 1 wei
+        dist = blockchain.submitNewContract(tokenDist, 900, 1000, 1000000L) // target and cap are 1 wei
         val dist_token_addr = dist.callConstFunction("token")[0] as ByteArray
         dist_token = blockchain.createExistingContractFromABI(token.abi, dist_token_addr)
     }
 
-    fun fast_forward_past_end_time() {
+    fun fast_forward_past_end_time(weeks: Long) {
         val end_time = dist.callConstFunction("end_time")[0] as BigInteger
-        blockchain = blockchain.withCurrentTime(Date(end_time.toLong()*1000L))
+        blockchain = blockchain.withCurrentTime(Date(end_time.toLong()*1000L + weeks*7L*24L*3600L*1000L))
         val block = blockchain.createBlock();
         assertTrue(block.header.timestamp > end_time.toLong())
+    }
+
+    fun fast_forward_to_before_end_time() {
+        val end_time = dist.callConstFunction("end_time")[0] as BigInteger
+        // 60 seconds before the end_time
+        blockchain = blockchain.withCurrentTime(Date(end_time.toLong()*1000L - 60L*1000L))
+        val block = blockchain.createBlock();
+        assertTrue(block.header.timestamp < end_time.toLong())
     }
 
     fun contribute(sender: ECKey, amount: Long, lock_weeks: Int): Boolean {
@@ -92,9 +103,7 @@ class TokenGame {
         val excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
         blockchain.sender = sender
         val approveResult = excess_token.callFunction("approve", excess_withdraw_addr, BigInteger("1000000"))
-        assertTrue(approveResult.isSuccessful)
         val withdrawResult = excess_withdraw.callFunction("withdraw")
-        assertTrue(withdrawResult.isSuccessful)
         return approveResult.isSuccessful && withdrawResult.isSuccessful
     }
 
@@ -114,7 +123,7 @@ class TokenGame {
 
     @Test
     fun `contribute after end time`() {
-        fast_forward_past_end_time()
+        fast_forward_past_end_time(0)
         assertFalse(contribute(bob, 1000000L, 0))
     }
 
@@ -126,14 +135,122 @@ class TokenGame {
     @Test
     fun `close bucket zero`() {
         assertTrue(contribute(bob, 1000000L, 0))
-        fast_forward_past_end_time()
+        fast_forward_past_end_time(0)
         val bob_balance_before = blockchain.blockchain.repository.getBalance(bob.address)
         assertTrue(close_next_bucket(bob))
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         assertEquals(BigInteger.ZERO, dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
         // 1M gas to be paid to iterate through 100 buckets down to number 0 and close zero bucket
-        assertEquals(BigInteger("1030415"), (bob_balance_before - bob_balance_after)/BigInteger("50000000000"))
+        assertEquals(BigInteger("1020436"), (bob_balance_before - bob_balance_after)/BigInteger("50000000000"))
+        // Various intermediate checks
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("contributions", bob.address, BigInteger("0"))[0] as BigInteger)
+        assertEquals(BigInteger("1000"), dist.callConstFunction("total_wei_accepted")[0] as BigInteger)
+        assertEquals(BigInteger("1000"), dist.callConstFunction("wei_accepted_from_bucket", BigInteger("0"))[0] as BigInteger)
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("wei_given_to_bucket", BigInteger("0"))[0] as BigInteger)
         assertTrue(claim_tokens(bob, bob, "0"))
         assertTrue(withdraw_from_bucket(bob, "0"))
+    }
+
+    @Test
+    fun `bucket zero vs bucket hundred`() {
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertTrue(contribute(eva, 1000000L, 100))
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("wei_given_to_bucket", BigInteger("0"))[0] as BigInteger)
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("wei_given_to_bucket", BigInteger("100"))[0] as BigInteger)
+        fast_forward_past_end_time(0)
+        assertTrue(close_next_bucket(bob))
+        assertEquals(BigInteger("100"), dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
+        assertEquals(BigInteger("2"), dist.callConstFunction("cap_remainder")[0] as BigInteger)
+        assertTrue(close_next_bucket(bob))
+        assertEquals(BigInteger.ZERO, dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
+        // Various intermediate checks
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("contributions", bob.address, BigInteger("0"))[0] as BigInteger)
+        assertEquals(BigInteger("1000"), dist.callConstFunction("total_wei_accepted")[0] as BigInteger)
+        assertEquals(BigInteger("2"), dist.callConstFunction("wei_accepted_from_bucket", BigInteger("0"))[0] as BigInteger)
+        assertEquals(BigInteger.ZERO, dist.callConstFunction("contributions", eva.address, BigInteger("0"))[0] as BigInteger)
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("contributions", eva.address, BigInteger("100"))[0] as BigInteger)
+        assertEquals(BigInteger("998"), dist.callConstFunction("wei_accepted_from_bucket", BigInteger("100"))[0] as BigInteger)
+        assertTrue(claim_tokens(bob, bob, "0"))
+        assertTrue(withdraw_from_bucket(bob, "0"))
+        // Eva tries to withdraw
+        assertTrue(claim_tokens(eva, eva, "100"))
+        assertFalse(withdraw_from_bucket(eva, "100"))
+        // Wait for 100 weeks
+        fast_forward_past_end_time(99)
+        assertFalse(withdraw_from_bucket(eva, "100"))
+        fast_forward_past_end_time(100)
+        assertTrue(withdraw_from_bucket(eva, "100"))
+        // Compare tokens awarded to bob and to eva
+        assertEquals(BigInteger("2000"), dist_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+        assertEquals(BigInteger("998000"), dist_token.callConstFunction("balanceOf", eva.address)[0] as BigInteger)
+    }
+
+    @Test
+    fun `extend end time`() {
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_1 = dist.callConstFunction("end_time")[0] as BigInteger
+        fast_forward_to_before_end_time()
+        assertTrue(contribute(eva, 1000000L, 0))
+        assertEquals(BigInteger("1125006"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_2 = dist.callConstFunction("end_time")[0] as BigInteger
+        assertEquals(BigInteger("340167"), end_time_2 - end_time_1)
+        fast_forward_to_before_end_time()
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertEquals(BigInteger("1227866"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_3 = dist.callConstFunction("end_time")[0] as BigInteger
+        assertEquals(BigInteger("247503"), end_time_3 - end_time_2)
+        fast_forward_to_before_end_time()
+        assertTrue(contribute(eva, 1000000L, 0))
+        assertEquals(BigInteger("1317719"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_4 = dist.callConstFunction("end_time")[0] as BigInteger
+        assertEquals(BigInteger("199205"), end_time_4 - end_time_3)
+        fast_forward_to_before_end_time()
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertEquals(BigInteger("1398630"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_5 = dist.callConstFunction("end_time")[0] as BigInteger
+        assertEquals(BigInteger("169144"), end_time_5 - end_time_4)
+    }
+
+    @Test
+    fun `multiple contributions to the same bucket`() {
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertTrue(contribute(bob, 2000000L, 0))
+        assertEquals(BigInteger("3000000"), dist.callConstFunction("contributions", bob.address, BigInteger("0"))[0] as BigInteger)
+    }
+
+    @Test
+    fun `multiple contributions to different buckets`() {
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertTrue(contribute(bob, 1000000L, 1))
+        fast_forward_past_end_time(0)
+        assertTrue(close_next_bucket(alice))
+        assertTrue(close_next_bucket(alice))
+        assertTrue(claim_tokens(alice, bob, "0"))
+        assertTrue(claim_tokens(alice, bob, "1"))
+        // Get all the tokens as the sole participant
+        assertEquals(BigInteger("1000000"), dist_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+    }
+
+    @Test
+    fun `did not reach the target`() {
+        val alice_balance_before = blockchain.blockchain.repository.getBalance(alice.address)
+        assertTrue(contribute(bob, 800L, 0))
+        fast_forward_past_end_time(0)
+        assertTrue(close_next_bucket(bob))
+        assertTrue(claim_tokens(bob, bob, "0"))
+        val alice_balance_after = blockchain.blockchain.repository.getBalance(alice.address)
+        assertEquals(BigInteger.ZERO, alice_balance_after - alice_balance_before)
+    }
+
+    @Test
+    fun `reached the target`() {
+        val alice_balance_before = blockchain.blockchain.repository.getBalance(alice.address)
+        assertTrue(contribute(bob, 100000L, 0))
+        fast_forward_past_end_time(0)
+        assertTrue(close_next_bucket(bob))
+        assertTrue(claim_tokens(bob, bob, "0"))
+        val alice_balance_after = blockchain.blockchain.repository.getBalance(alice.address)
+        assertEquals(BigInteger("1000"), alice_balance_after - alice_balance_before)
     }
 }

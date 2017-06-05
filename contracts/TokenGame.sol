@@ -102,6 +102,11 @@ contract TokenDistribution {
     uint public last_bucket_closed = MAX_LOCK_WEEKS + 1;       /* Counter (goes from max_lock_weeks to 0) used to finalise bucket by bucket */
     uint public cap_remainder;                                 /* As the buckets are getting closed, the cap_remainder reduced to what is left to allocate */
 
+    // sqrt(2), sqrt(sqrt(2)), sqrt(sqrt(sqrt(2))), ...
+    uint[] FIXED_POINT_DECAYS =
+        [1414213562370, 1189207115000, 1090507732670, 1044273782430, 1021897148650, 1010889286050, 1005429901110, 1002711275050, 1002711275050, 1000677130690,
+         1000338508050, 1000169239710, 1000084616270, 1000042307240, 1000021153400, 1000010576640, 1000005288310, 1000002644150, 1000001322070, 1000000661040];
+
     function TokenDistribution(uint _target_in_wei, uint _cap_in_wei, uint _tokens_to_mint) {
         owner = msg.sender;
         target_in_wei = _target_in_wei;
@@ -112,6 +117,24 @@ contract TokenDistribution {
         end_time = now + INITIAL_DURATION;
     }
 
+    function exponential_decay(uint value, uint time) private returns (uint decayed) {
+        if (time == 0) {
+            return value;
+        }
+        // First, we half the value for each unit of TIME_OF_HALF_DECAY
+        uint v = value / (1 << (time / TIME_OF_HALF_DECAY));
+        uint t = time % TIME_OF_HALF_DECAY;
+        uint decay = TIME_OF_HALF_DECAY >> 1; // This is half of the time of half decay
+        for(uint8 i = 0; i<20 && decay > 0; ++i) {
+            if (t >= decay) {
+                v = v * FIXED_POINT_ONE / FIXED_POINT_DECAYS[i];
+                t -= decay;
+            }
+            decay >>= 1;
+        }
+        return v;
+    }
+
     function contribute(uint lock_weeks) payable {
         require(now <= end_time);   // Check that the sale has not ended
         require(msg.value > 0);     // Check that something has been sent
@@ -119,7 +142,7 @@ contract TokenDistribution {
         contributions[msg.sender][lock_weeks] += msg.value;
         wei_given_to_bucket[lock_weeks] += msg.value;
         total_wei_given += msg.value;
-        ema = msg.value + ema * TIME_OF_HALF_DECAY / (TIME_OF_HALF_DECAY + (now - last_time) );
+        ema = msg.value + exponential_decay(ema, now - last_time);
         last_time = now;
         uint extended_time = now + ema * TIME_EXTENSION_FROM_DOUBLING / total_wei_given;
         if (extended_time > end_time) {

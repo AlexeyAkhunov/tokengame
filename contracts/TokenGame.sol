@@ -121,7 +121,7 @@ contract TokenDistribution {
         if (time == 0) {
             return value;
         }
-        // First, we half the value for each unit of TIME_OF_HALF_DECAY
+        // First, we halve the value for each unit of TIME_OF_HALF_DECAY
         uint v = value / (1 << (time / TIME_OF_HALF_DECAY));
         uint t = time % TIME_OF_HALF_DECAY;
         uint decay = TIME_OF_HALF_DECAY >> 1; // This is half of the time of half decay

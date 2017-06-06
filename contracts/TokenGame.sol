@@ -83,8 +83,8 @@ contract TokenDistribution {
     uint public cap_in_wei;                                    /* Maximum amount to accept - return the rest */
     uint public tokens_to_mint;                                /* How many tokens need to be issued */
     uint constant INITIAL_DURATION = 1 weeks;
-    uint constant TIME_EXTENSION_FROM_DOUBLING = 1 days;
-    uint constant TIME_OF_HALF_DECAY = 1 days;
+    uint constant TIME_EXTENSION_FROM_DOUBLING = 2 days;
+    uint constant TIME_OF_HALF_DECAY = 6 hours;
     uint constant MAX_LOCK_WEEKS = 100;                        /* Maximum number of weeks that the excess contribution can be locked for */
     uint constant FIXED_POINT_ONE = 1000000000000;             /* Equivalent of number "1" for fixed point arithmetics */
     uint constant FIXED_POINT_PRC = 1070000000000;             /* Equivalent of number "1.07" for fixed point arithmetics */
@@ -122,15 +122,19 @@ contract TokenDistribution {
             return value;
         }
         // First, we halve the value for each unit of TIME_OF_HALF_DECAY
-        uint v = value / (1 << (time / TIME_OF_HALF_DECAY));
-        uint t = time % TIME_OF_HALF_DECAY;
-        uint decay = TIME_OF_HALF_DECAY >> 1; // This is half of the time of half decay
-        for(uint8 i = 0; i<20 && decay > 0; ++i) {
-            if (t >= decay) {
-                v = v * FIXED_POINT_ONE / FIXED_POINT_DECAYS[i];
-                t -= decay;
+        uint shifts = time / TIME_OF_HALF_DECAY;
+        uint v = 0;
+        if (shifts < 256) {
+            v = value >> shifts;
+            uint t = time % TIME_OF_HALF_DECAY;
+            uint decay = TIME_OF_HALF_DECAY; // This is half of the time of half decay
+            for(uint8 i = 0; (i<20) && (decay > 0) && (v > 0); ++i) {
+                decay >>= 1;
+                if (t >= decay) {
+                    v = v * FIXED_POINT_ONE / FIXED_POINT_DECAYS[i];
+                    t -= decay;
+                }
             }
-            decay >>= 1;
         }
         return v;
     }
@@ -142,6 +146,7 @@ contract TokenDistribution {
         contributions[msg.sender][lock_weeks] += msg.value;
         wei_given_to_bucket[lock_weeks] += msg.value;
         total_wei_given += msg.value;
+        // Time weighted exponential moving average is computed over the size of the contributions
         ema = msg.value + exponential_decay(ema, now - last_time);
         last_time = now;
         uint extension = ema * TIME_EXTENSION_FROM_DOUBLING / total_wei_given;

@@ -83,7 +83,7 @@ contract TokenDistribution {
     uint public cap_in_wei;                                    /* Maximum amount to accept - return the rest */
     uint public tokens_to_mint;                                /* How many tokens need to be issued */
     uint constant INITIAL_DURATION = 1 weeks;
-    uint constant TIME_EXTENSION_FROM_DOUBLING = 1 weeks;
+    uint constant TIME_EXTENSION_FROM_DOUBLING = 1 days;
     uint constant TIME_OF_HALF_DECAY = 1 days;
     uint constant MAX_LOCK_WEEKS = 100;                        /* Maximum number of weeks that the excess contribution can be locked for */
     uint constant FIXED_POINT_ONE = 1000000000000;             /* Equivalent of number "1" for fixed point arithmetics */

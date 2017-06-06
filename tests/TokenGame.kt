@@ -192,24 +192,24 @@ class TokenGame {
         val end_time_1 = dist.callConstFunction("end_time")[0] as BigInteger
         fast_forward_to_before_end_time()
         assertTrue(contribute(eva, 1000000L, 0))
-        assertEquals(BigInteger("1007798"), dist.callConstFunction("ema")[0] as BigInteger)
+        assertEquals(BigInteger("1007796"), dist.callConstFunction("ema")[0] as BigInteger)
         val end_time_2 = dist.callConstFunction("end_time")[0] as BigInteger
-        assertEquals(BigInteger("304724"), end_time_2 - end_time_1)
+        assertEquals(BigInteger("43502"), end_time_2 - end_time_1)
         fast_forward_to_before_end_time()
         assertTrue(contribute(bob, 1000000L, 0))
-        assertEquals(BigInteger("1087310"), dist.callConstFunction("ema")[0] as BigInteger)
+        assertEquals(BigInteger("1709915"), dist.callConstFunction("ema")[0] as BigInteger)
         val end_time_3 = dist.callConstFunction("end_time")[0] as BigInteger
-        assertEquals(BigInteger("219167"), end_time_3 - end_time_2)
+        assertEquals(BigInteger("49211"), end_time_3 - end_time_2)
         fast_forward_to_before_end_time()
         assertTrue(contribute(eva, 1000000L, 0))
-        assertEquals(BigInteger("1187385"), dist.callConstFunction("ema")[0] as BigInteger)
+        assertEquals(BigInteger("2150588"), dist.callConstFunction("ema")[0] as BigInteger)
         val end_time_4 = dist.callConstFunction("end_time")[0] as BigInteger
-        assertEquals(BigInteger("179498"), end_time_4 - end_time_3)
+        assertEquals(BigInteger("46418"), end_time_4 - end_time_3)
         fast_forward_to_before_end_time()
         assertTrue(contribute(bob, 1000000L, 0))
-        assertEquals(BigInteger("1280924"), dist.callConstFunction("ema")[0] as BigInteger)
+        assertEquals(BigInteger("2479898"), dist.callConstFunction("ema")[0] as BigInteger)
         val end_time_5 = dist.callConstFunction("end_time")[0] as BigInteger
-        assertEquals(BigInteger("154906"), end_time_5 - end_time_4)
+        assertEquals(BigInteger("42818"), end_time_5 - end_time_4)
     }
 
     @Test
@@ -278,7 +278,7 @@ class TokenGame {
         // Contribute 100 times more
         assertTrue(contribute(eva, 100000000L, 0))
         val end_time_2 = dist.callConstFunction("end_time")[0] as BigInteger
-        // Extension time is capped - one week
-        assertEquals(BigInteger("598824"), end_time_2 - end_time_1)
+        // Extension time is capped - one day
+        assertEquals(BigInteger("85517"), end_time_2 - end_time_1)
     }
 }

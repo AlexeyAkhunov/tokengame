@@ -150,19 +150,19 @@ contract TokenDistribution {
         total_wei_given += msg.value;
 
         // Do not apply extension of the end_time if we are refilling the gap left by escapes
-        if (total_wei_given > ema_divisor) {
-            // Time weighted exponential moving average is computed over the size of the contributions
-            ema = msg.value + exponential_decay(ema, now - last_time);
-            last_time = now;
-            ema_divisor = total_wei_given;
-            uint256 extension = ema * TIME_EXTENSION_FROM_DOUBLING / ema_divisor;
-            if (extension > TIME_EXTENSION_FROM_DOUBLING) {
-                extension = TIME_EXTENSION_FROM_DOUBLING;
-            }
-            uint256 extended_time = now + extension;
-            if (extended_time > end_time) {
-                end_time = extended_time;
-            }
+        if (total_wei_given <= ema_divisor) return;
+
+        // Time weighted exponential moving average is computed over the size of the contributions
+        ema = msg.value + exponential_decay(ema, now - last_time);
+        last_time = now;
+        ema_divisor = total_wei_given;
+        uint256 extension = ema * TIME_EXTENSION_FROM_DOUBLING / ema_divisor;
+        if (extension > TIME_EXTENSION_FROM_DOUBLING) {
+            extension = TIME_EXTENSION_FROM_DOUBLING;
+        }
+        uint256 extended_time = now + extension;
+        if (extended_time > end_time) {
+            end_time = extended_time;
         }
     }
 

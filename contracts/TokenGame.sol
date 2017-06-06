@@ -264,7 +264,7 @@ contract TokenGame is TokenDistribution {
 
     PrizePot public prize_pot;
 
-    function TokenGame() TokenDistribution(0, 0, 1000) {
+    function TokenGame() TokenDistribution(1000000 /* target */, 1000000000 /* cap */, 1000000000 /* tokens to mint */) {
         prize_pot = new PrizePot(this);
     }
 }

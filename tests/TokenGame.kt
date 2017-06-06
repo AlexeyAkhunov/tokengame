@@ -86,6 +86,11 @@ class TokenGame {
         return dist.callFunction(amount, "contribute", lock_weeks).isSuccessful
     }
 
+    fun escape(sender: ECKey, lock_weeks: Int): Boolean {
+        blockchain.sender = sender
+        return dist.callFunction("escape", lock_weeks).isSuccessful
+    }
+
     fun close_next_bucket(sender: ECKey): Boolean {
         blockchain.sender = sender
         return dist.callFunction("close_next_bucket").isSuccessful
@@ -285,5 +290,23 @@ class TokenGame {
         val end_time_2 = dist.callConstFunction("end_time")[0] as BigInteger
         // Extension time is capped - one day
         assertEquals(BigInteger("171055"), end_time_2 - end_time_1)
+    }
+
+    @Test
+    fun `attempt to escape and recycle`() {
+        assertTrue(contribute(bob, 1000000L, 100))
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("ema")[0] as BigInteger)
+        fast_forward_to_before_end_time()
+        assertTrue(escape(bob, 100))
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_1 = dist.callConstFunction("end_time")[0] as BigInteger
+        assertTrue(contribute(bob, 1000000L, 100))
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_2 = dist.callConstFunction("end_time")[0] as BigInteger
+        assertEquals(BigInteger("0"), end_time_2 - end_time_1) // Recycling escaped funds does not extend
+        assertTrue(contribute(eva, 1000000L, 0))
+        assertEquals(BigInteger("1000000"), dist.callConstFunction("ema")[0] as BigInteger)
+        val end_time_3 = dist.callConstFunction("end_time")[0] as BigInteger
+        assertEquals(BigInteger("86392"), end_time_3 - end_time_2) // After that, the usual extension logic applies
     }
 }

@@ -147,11 +147,12 @@ contract TokenDistribution {
         contributions[msg.sender][lock_weeks] += msg.value;
         wei_given_to_bucket[lock_weeks] += msg.value;
         total_wei_given += msg.value;
-        // Time weighted exponential moving average is computed over the size of the contributions
-        ema = msg.value + exponential_decay(ema, now - last_time);
-        last_time = now;
+
         // Do not apply extension of the end_time if we are refilling the gap left by escapes
         if (total_wei_given > ema_divisor) {
+            // Time weighted exponential moving average is computed over the size of the contributions
+            ema = msg.value + exponential_decay(ema, now - last_time);
+            last_time = now;
             ema_divisor = total_wei_given;
             uint extension = ema * TIME_EXTENSION_FROM_DOUBLING / ema_divisor;
             if (extension > TIME_EXTENSION_FROM_DOUBLING) {

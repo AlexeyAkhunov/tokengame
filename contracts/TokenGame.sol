@@ -77,6 +77,22 @@ contract ExcessWithdraw {
     }
 }
 
+contract EscapePod {
+    uint public release_time;
+    address public player;
+
+    function EscapePod(uint _release_time, address _player) {
+        release_time = _release_time;
+        player = _player;
+    }
+
+    function withdraw() {
+        require(msg.sender == player);
+        require(now >= release_time);
+        selfdestruct(player);
+    }
+}
+
 contract TokenDistribution {
     address public owner;
     uint public target_in_wei;                                 /* Minimum amount to collect - otherwise return everything */
@@ -91,8 +107,9 @@ contract TokenDistribution {
     Token public token;                                        /* Token contract where sold tokens are minted */
     uint public end_time;                                      /* Current end time */
     uint last_time = 0;                                        /* Timestamp of the latest contribution */
-    uint256 public ema = 0;                                    /* Current value of the EMA */
-    uint public total_wei_given = 0;                           /* Total amount of wei given via fallback function */
+    uint256 public ema = 0;                                    /* Current value of the Exponential Moving Average */
+    uint public ema_divisor = 0;                               /* Amount of wei given, including what has escaped */
+    uint public total_wei_given = 0;                           /* Total amount of wei given via contribute function, minus escapes */
     uint public total_wei_accepted = 0;                        /* Total amount of wei accepted */
     mapping (uint => Token) public excess_tokens;              /* Excess tokens organised by lock weeks */
     mapping (uint => ExcessWithdraw) public excess_withdraws;  /* Excess withdraw contracts organised by lock weeks */
@@ -146,16 +163,31 @@ contract TokenDistribution {
         contributions[msg.sender][lock_weeks] += msg.value;
         wei_given_to_bucket[lock_weeks] += msg.value;
         total_wei_given += msg.value;
+        ema_divisor += msg.value;
         // Time weighted exponential moving average is computed over the size of the contributions
         ema = msg.value + exponential_decay(ema, now - last_time);
         last_time = now;
-        uint extension = ema * TIME_EXTENSION_FROM_DOUBLING / total_wei_given;
+        uint extension = ema * TIME_EXTENSION_FROM_DOUBLING / ema_divisor;
         if (extension > TIME_EXTENSION_FROM_DOUBLING) {
             extension = TIME_EXTENSION_FROM_DOUBLING;
         }
         uint extended_time = now + extension;
         if (extended_time > end_time) {
             end_time = extended_time;
+        }
+    }
+
+    function escape(uint bucket) {
+        require(last_bucket_closed > MAX_LOCK_WEEKS);   // Check that no buckets are yet closed
+        uint contribution = contributions[msg.sender][bucket];
+        if (contribution > 0) {
+            contributions[msg.sender][bucket] = 0;
+            wei_given_to_bucket[bucket] -= contribution;
+            total_wei_given -= contribution;
+            EscapePod escapePod = new EscapePod(end_time + (1 weeks)*bucket, msg.sender);
+            if (!escapePod.send(contribution)) {
+                throw;
+            }
         }
     }
 

@@ -77,22 +77,6 @@ contract ExcessWithdraw {
     }
 }
 
-contract EscapePod {
-    uint public release_time;
-    address public player;
-
-    function EscapePod(uint _release_time, address _player) {
-        release_time = _release_time;
-        player = _player;
-    }
-
-    function withdraw() {
-        require(msg.sender == player);
-        require(now >= release_time);
-        selfdestruct(player);
-    }
-}
-
 contract TokenDistribution {
     address public owner;
     uint public target_in_wei;                                 /* Minimum amount to collect - otherwise return everything */
@@ -163,17 +147,20 @@ contract TokenDistribution {
         contributions[msg.sender][lock_weeks] += msg.value;
         wei_given_to_bucket[lock_weeks] += msg.value;
         total_wei_given += msg.value;
-        ema_divisor += msg.value;
         // Time weighted exponential moving average is computed over the size of the contributions
         ema = msg.value + exponential_decay(ema, now - last_time);
         last_time = now;
-        uint extension = ema * TIME_EXTENSION_FROM_DOUBLING / ema_divisor;
-        if (extension > TIME_EXTENSION_FROM_DOUBLING) {
-            extension = TIME_EXTENSION_FROM_DOUBLING;
-        }
-        uint extended_time = now + extension;
-        if (extended_time > end_time) {
-            end_time = extended_time;
+        // Do not apply extension of the end_time if we are refilling the gap left by escapes
+        if (total_wei_given > ema_divisor) {
+            ema_divisor = total_wei_given;
+            uint extension = ema * TIME_EXTENSION_FROM_DOUBLING / ema_divisor;
+            if (extension > TIME_EXTENSION_FROM_DOUBLING) {
+                extension = TIME_EXTENSION_FROM_DOUBLING;
+            }
+            uint extended_time = now + extension;
+            if (extended_time > end_time) {
+                end_time = extended_time;
+            }
         }
     }
 
@@ -184,8 +171,7 @@ contract TokenDistribution {
             contributions[msg.sender][bucket] = 0;
             wei_given_to_bucket[bucket] -= contribution;
             total_wei_given -= contribution;
-            EscapePod escapePod = new EscapePod(end_time + (1 weeks)*bucket, msg.sender);
-            if (!escapePod.send(contribution)) {
+            if (!msg.sender.send(contribution)) {
                 throw;
             }
         }

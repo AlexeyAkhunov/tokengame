@@ -57,12 +57,12 @@ class TokenGame {
                 .withAutoblock(true)
                 .withAccountBalance(alice.address, BigInteger.valueOf(2).pow(128))
                 .withAccountBalance(bob.address, BigInteger.valueOf(2).pow(128))
-                .withAccountBalance(carol.address, BigInteger.ZERO)
+                .withAccountBalance(carol.address, BigInteger.valueOf(2).pow(128))
                 .withAccountBalance(dan.address, BigInteger.ONE)
                 .withAccountBalance(eva.address, BigInteger.valueOf(2).pow(128))
         blockchain.createBlock()
         blockchain.sender = alice
-        dist = blockchain.submitNewContract(tokenDist, 900, 1000, 1000000L) // target and cap are 1 wei
+        dist = blockchain.submitNewContract(tokenDist, 900, 1000, 1000000L) // target is 900 wei, cap is 1000 wei
         prize_pot = blockchain.submitNewContract(prizePot, dist.address)
         val dist_token_addr = dist.callConstFunction("token")[0] as ByteArray
         dist_token = blockchain.createExistingContractFromABI(token.abi, dist_token_addr)
@@ -98,15 +98,15 @@ class TokenGame {
         return dist.callFunction("close_next_bucket").isSuccessful
     }
 
-    fun claim_tokens(sender: ECKey, player: ECKey, bucket: String): Boolean {
+    fun claim_tokens(sender: ECKey, player: ECKey, bucket: Int): Boolean {
         blockchain.sender = sender
-        return dist.callFunction("claim_tokens", player.address, BigInteger(bucket)).isSuccessful
+        return dist.callFunction("claim_tokens", player.address, bucket).isSuccessful
     }
 
-    fun withdraw_from_bucket(sender: ECKey, bucket: String): Boolean {
-        val excess_withdraw_addr = dist.callConstFunction("excess_withdraws", BigInteger(bucket))[0] as ByteArray
+    fun withdraw_from_bucket(sender: ECKey, bucket: Int): Boolean {
+        val excess_withdraw_addr = dist.callConstFunction("excess_withdraws", bucket)[0] as ByteArray
         val excess_withdraw = blockchain.createExistingContractFromABI(excessWithdraw.abi, excess_withdraw_addr)
-        val excess_token_addr = dist.callConstFunction("excess_tokens", BigInteger(bucket))[0] as ByteArray
+        val excess_token_addr = dist.callConstFunction("excess_tokens", bucket)[0] as ByteArray
         val excess_token = blockchain.createExistingContractFromABI(token.abi, excess_token_addr)
         blockchain.sender = sender
         val approveResult = excess_token.callFunction("approve", excess_withdraw_addr, BigInteger("1000000"))
@@ -154,8 +154,8 @@ class TokenGame {
         assertEquals(BigInteger("1000"), dist.callConstFunction("total_wei_accepted")[0] as BigInteger)
         assertEquals(BigInteger("1000"), dist.callConstFunction("wei_accepted_from_bucket", BigInteger("0"))[0] as BigInteger)
         assertEquals(BigInteger("1000000"), dist.callConstFunction("wei_given_to_bucket", BigInteger("0"))[0] as BigInteger)
-        assertTrue(claim_tokens(bob, bob, "0"))
-        assertTrue(withdraw_from_bucket(bob, "0"))
+        assertTrue(claim_tokens(bob, bob, 0))
+        assertTrue(withdraw_from_bucket(bob, 0))
     }
 
     @Test
@@ -177,16 +177,16 @@ class TokenGame {
         assertEquals(BigInteger.ZERO, dist.callConstFunction("contributions", eva.address, BigInteger("0"))[0] as BigInteger)
         assertEquals(BigInteger("1000000"), dist.callConstFunction("contributions", eva.address, BigInteger("100"))[0] as BigInteger)
         assertEquals(BigInteger("998"), dist.callConstFunction("wei_accepted_from_bucket", BigInteger("100"))[0] as BigInteger)
-        assertTrue(claim_tokens(bob, bob, "0"))
-        assertTrue(withdraw_from_bucket(bob, "0"))
+        assertTrue(claim_tokens(bob, bob, 0))
+        assertTrue(withdraw_from_bucket(bob, 0))
         // Eva tries to withdraw
-        assertTrue(claim_tokens(eva, eva, "100"))
-        assertFalse(withdraw_from_bucket(eva, "100"))
+        assertTrue(claim_tokens(eva, eva, 100))
+        assertFalse(withdraw_from_bucket(eva, 100))
         // Wait for 100 weeks
         fast_forward_past_end_time(99)
-        assertFalse(withdraw_from_bucket(eva, "100"))
+        assertFalse(withdraw_from_bucket(eva, 100))
         fast_forward_past_end_time(100)
-        assertTrue(withdraw_from_bucket(eva, "100"))
+        assertTrue(withdraw_from_bucket(eva, 100))
         // Compare tokens awarded to bob and to eva
         assertEquals(BigInteger("2000"), dist_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
         assertEquals(BigInteger("998000"), dist_token.callConstFunction("balanceOf", eva.address)[0] as BigInteger)
@@ -238,8 +238,8 @@ class TokenGame {
         fast_forward_past_end_time(0)
         assertTrue(close_next_bucket(alice))
         assertTrue(close_next_bucket(alice))
-        assertTrue(claim_tokens(alice, bob, "0"))
-        assertTrue(claim_tokens(alice, bob, "1"))
+        assertTrue(claim_tokens(alice, bob, 0))
+        assertTrue(claim_tokens(alice, bob, 1))
         // Get all the tokens as the sole participant
         assertEquals(BigInteger("1000000"), dist_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
     }
@@ -250,7 +250,7 @@ class TokenGame {
         assertTrue(contribute(bob, 800L, 0))
         fast_forward_past_end_time(0)
         assertFalse(close_next_bucket(bob))
-        assertFalse(claim_tokens(bob, bob, "0"))
+        assertFalse(claim_tokens(bob, bob, 0))
         assertTrue(escape(bob, 0))
         val alice_balance_after = blockchain.blockchain.repository.getBalance(alice.address)
         assertEquals(BigInteger.ZERO, alice_balance_after - alice_balance_before)
@@ -262,7 +262,7 @@ class TokenGame {
         assertTrue(contribute(bob, 100000L, 0))
         fast_forward_past_end_time(0)
         assertTrue(close_next_bucket(bob))
-        assertTrue(claim_tokens(bob, bob, "0"))
+        assertTrue(claim_tokens(bob, bob, 0))
         val alice_balance_after = blockchain.blockchain.repository.getBalance(alice.address)
         assertEquals(BigInteger("1000"), alice_balance_after - alice_balance_before)
     }
@@ -330,6 +330,7 @@ class TokenGame {
         assertEquals(BigInteger("1000000000"), blockchain.blockchain.repository.getBalance(prize_pot.address))
         assertTrue(contribute(bob, 800L, 0))
         fast_forward_past_end_time(0)
+        assertFalse(close_next_bucket(alice))
         val alice_balance_before = blockchain.blockchain.repository.getBalance(alice.address)
         blockchain.sender = bob
         val result = prize_pot.callFunction("cancel")
@@ -339,13 +340,45 @@ class TokenGame {
     }
 
     @Test
+    fun `cannot escape after a bucket is closed`() {
+        assertTrue(contribute(bob, 1000000L, 0))
+        assertTrue(contribute(carol, 1000000L, 30))
+        fast_forward_past_end_time(0)
+        // Still possible to escape after the end time before the first bucket is closed
+        assertTrue(escape(carol, 30))
+        assertTrue(close_next_bucket(alice))
+        // Cannot escape anymore
+        assertFalse(escape(bob, 0))
+    }
+
+    @Test
+    fun `cannot escape twice`() {
+        assertTrue(contribute(bob, 1000000L, 9))
+        assertTrue(escape(bob, 9))
+        // Second escape in the same bucket
+        assertFalse(escape(bob, 9))
+    }
+
+    @Test
+    fun `escape from different buckets`() {
+        assertTrue(contribute(bob, 1000000L, 3))
+        assertTrue(contribute(bob, 2000000L, 4))
+        assertTrue(contribute(bob, 3000000L, 5))
+        assertTrue(escape(bob, 5))
+        fast_forward_past_end_time(0)
+        assertTrue(escape(bob, 4))
+        assertTrue(escape(bob, 3))
+    }
+
+    @Test
     fun `claim prize from the prize pot`() {
         blockchain.sender = eva
         blockchain.sendEther(prize_pot.address, BigInteger("100000000000000000000"))
         assertTrue(contribute(bob, 100000L, 0))
         fast_forward_past_end_time(0)
         assertTrue(close_next_bucket(bob))
-        assertTrue(claim_tokens(bob, bob, "0"))
+        assertFalse(close_next_bucket(bob))
+        assertTrue(claim_tokens(bob, bob, 0))
         blockchain.sender = bob
         val approveResult = dist_token.callFunction("approve", prize_pot.address, BigInteger("1000000"))
         assertTrue(approveResult.isSuccessful)
@@ -355,5 +388,24 @@ class TokenGame {
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         // Prize minus gas fees
         assertEquals(BigInteger("99998228200000000000"), bob_balance_after-bob_balance_before)
+    }
+
+    @Test
+    fun `alice bob carol example from blog`() {
+        // cap is 1000 wei
+        assertTrue(contribute(alice, 100, 52))
+        assertTrue(contribute(bob, 1000, 4))
+        assertTrue(contribute(carol, 10000, 0))
+        fast_forward_past_end_time(0)
+        assertTrue(close_next_bucket(carol))
+        assertTrue(close_next_bucket(bob))
+        assertTrue(close_next_bucket(alice))
+        assertFalse(close_next_bucket(carol))
+        assertTrue(claim_tokens(alice, carol, 0))
+        assertTrue(claim_tokens(alice, bob, 4))
+        assertTrue(claim_tokens(alice, alice, 52))
+        assertEquals(BigInteger("100000"), dist_token.callConstFunction("balanceOf", alice.address)[0] as BigInteger)
+        assertEquals(BigInteger("104000"), dist_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+        assertEquals(BigInteger("796000"), dist_token.callConstFunction("balanceOf", carol.address)[0] as BigInteger)
     }
 }

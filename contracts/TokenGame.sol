@@ -101,6 +101,8 @@ contract TokenDistribution {
     mapping (uint256 => uint256) public wei_accepted_from_bucket; /* Amount of wei accepted from specific bucket (lock_weeks is the key in the mapping) */
     mapping (address => mapping (uint256 => uint256)) public contributions; /* Contributions of a participant (first key) to a bucket (second key) */
     uint256 public last_bucket_closed = MAX_LOCK_WEEKS + 1;       /* Counter (goes from max_lock_weeks to 0) used to finalise bucket by bucket */
+    bool public closing = false;                                  /* Set to true when at least one bucket is closed */
+    bool public closed = false;                                   /* Set to true when the last bucket is closed */
     uint256 public cap_remainder;                                 /* As the buckets are getting closed, the cap_remainder reduced to what is left to allocate */
 
     // sqrt(2), sqrt(sqrt(2)), sqrt(sqrt(sqrt(2))), ...
@@ -167,7 +169,7 @@ contract TokenDistribution {
     }
 
     function escape(uint256 bucket) {
-        require(last_bucket_closed > MAX_LOCK_WEEKS);   // Check that no buckets are yet closed
+        require(!closing);   // Check that no buckets are yet closed
         uint256 contribution = contributions[msg.sender][bucket];
         require(contribution > 0);
         contributions[msg.sender][bucket] = 0;
@@ -178,8 +180,9 @@ contract TokenDistribution {
 
     function close_next_bucket() {
         require(now > end_time);                   /* Can only close buckets after the end of sale */
-        require(last_bucket_closed > 0);           /* Not all buckets closed yet */
+        require(!closed);                          /* Not all buckets closed yet */
         require(total_wei_given >= target_in_wei); /* Target must be reached */
+        closing = true;
         uint256 bucket = last_bucket_closed - 1;
         while (bucket > 0 && wei_given_to_bucket[bucket] == 0) {
             bucket--;
@@ -208,8 +211,11 @@ contract TokenDistribution {
                 // Only call if there is an excess
                 move_excess_for_bucket(bucket, bucket_contribution - accepted);
             }
+            last_bucket_closed = bucket;
         }
-        last_bucket_closed = bucket;
+        if (bucket == 0) {
+            closed = true;
+        }
     }
 
     function move_excess_for_bucket(uint256 bucket, uint256 excess) private {
@@ -222,7 +228,7 @@ contract TokenDistribution {
 
     // Claim tokens for players and send ether to the owner
     function claim_tokens(address player, uint256 bucket) {
-        require(last_bucket_closed == 0); /* Claims only allowed when all buckets are closed */
+        require(closed); /* Claims only allowed when all buckets are closed */
         uint256 contribution = contributions[player][bucket];
         require(contribution > 0);
         contributions[player][bucket] = 0;

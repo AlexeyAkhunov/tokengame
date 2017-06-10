@@ -148,7 +148,7 @@ class TokenGame {
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         assertEquals(BigInteger.ZERO, dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
         // 1M gas to be paid to iterate through 100 buckets down to number 0 and close zero bucket
-        assertEquals(BigInteger("1020612"), (bob_balance_before - bob_balance_after)/BigInteger("50000000000"))
+        assertEquals(BigInteger("1045947"), (bob_balance_before - bob_balance_after)/BigInteger("50000000000"))
         // Various intermediate checks
         assertEquals(BigInteger("1000000"), dist.callConstFunction("contributions", bob.address, BigInteger("0"))[0] as BigInteger)
         assertEquals(BigInteger("1000"), dist.callConstFunction("total_wei_accepted")[0] as BigInteger)
@@ -280,7 +280,7 @@ class TokenGame {
         assertTrue(contribute(bob, 100000L, 0))
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         val gas = (bob_balance_before - bob_balance_after - BigInteger("1000000"))/BigInteger("50000000000")
-        assertEquals(BigInteger("57384"), gas)
+        assertEquals(BigInteger("57406"), gas)
     }
 
     @Test
@@ -320,7 +320,7 @@ class TokenGame {
         assertTrue(escape(bob, 0))
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         val gas = (bob_balance_before - bob_balance_after + BigInteger("10000000"))/BigInteger("50000000000")
-        assertEquals(BigInteger("22141"), gas)
+        assertEquals(BigInteger("22157"), gas)
     }
 
     @Test
@@ -387,7 +387,7 @@ class TokenGame {
         assertTrue(claimResult.isSuccessful)
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         // Prize minus gas cost
-        assertEquals(BigInteger("99998228200000000000"), bob_balance_after-bob_balance_before)
+        assertEquals(BigInteger("99998226000000000000"), bob_balance_after-bob_balance_before)
     }
 
     @Test
@@ -418,7 +418,7 @@ class TokenGame {
         assertTrue(escape(bob, 3))
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         // Two million wei minus gas cost
-        assertEquals(BigInteger("1998891350000000000"), bob_balance_after-bob_balance_before)
+        assertEquals(BigInteger("1998890550000000000"), bob_balance_after-bob_balance_before)
     }
 
     @Test

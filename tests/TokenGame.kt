@@ -386,7 +386,7 @@ class TokenGame {
         val claimResult = prize_pot.callFunction("claim_prize")
         assertTrue(claimResult.isSuccessful)
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
-        // Prize minus gas fees
+        // Prize minus gas cost
         assertEquals(BigInteger("99998228200000000000"), bob_balance_after-bob_balance_before)
     }
 
@@ -407,5 +407,47 @@ class TokenGame {
         assertEquals(BigInteger("100000"), dist_token.callConstFunction("balanceOf", alice.address)[0] as BigInteger)
         assertEquals(BigInteger("104000"), dist_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
         assertEquals(BigInteger("796000"), dist_token.callConstFunction("balanceOf", carol.address)[0] as BigInteger)
+    }
+
+    @Test
+    fun `multiple contributions one escape`() {
+        assertTrue(contribute(bob, 1000000000000000000L, 3))
+        blockchain.createBlock()
+        assertTrue(contribute(bob, 1000000000000000000L, 3))
+        val bob_balance_before = blockchain.blockchain.repository.getBalance(bob.address)
+        assertTrue(escape(bob, 3))
+        val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
+        // Two million wei minus gas cost
+        assertEquals(BigInteger("1998891350000000000"), bob_balance_after-bob_balance_before)
+    }
+
+    @Test
+    fun `two players two buckets`() {
+        assertTrue(contribute(bob, 1000000000000000000L, 3))
+        blockchain.createBlock()
+        assertTrue(contribute(carol, 2000000000000000000L, 3))
+        blockchain.createBlock()
+        assertTrue(contribute(bob, 3000000000000000000L, 50))
+        blockchain.createBlock()
+        assertTrue(contribute(carol, 4000000000000000000L, 50))
+        blockchain.createBlock()
+        fast_forward_past_end_time(0)
+        assertTrue(close_next_bucket(alice))
+        assertEquals(BigInteger("50"), dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
+        assertTrue(close_next_bucket(alice))
+        assertEquals(BigInteger("3"), dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
+        assertTrue(close_next_bucket(alice))
+        assertFalse(close_next_bucket(alice))
+        assertTrue(claim_tokens(carol, bob, 3))
+        assertTrue(claim_tokens(bob, bob, 50))
+        assertFalse(claim_tokens(carol, bob, 100))
+        assertTrue(claim_tokens(bob, carol, 3))
+        assertTrue(claim_tokens(carol, carol, 50))
+        assertFalse(claim_tokens(bob, carol, 100))
+    }
+
+    @Test
+    fun `lock up too long`() {
+        assertFalse(contribute(bob, 1000000000000000000L, 101))
     }
 }

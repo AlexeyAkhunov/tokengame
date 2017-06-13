@@ -387,7 +387,7 @@ class TokenGame {
         assertTrue(claimResult.isSuccessful)
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         // Prize minus gas cost
-        assertEquals(BigInteger("99998226000000000000"), bob_balance_after-bob_balance_before)
+        assertEquals(BigInteger("99998228800000000000"), bob_balance_after-bob_balance_before)
     }
 
     @Test

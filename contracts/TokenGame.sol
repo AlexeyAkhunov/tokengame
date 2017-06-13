@@ -71,9 +71,8 @@ contract ExcessWithdraw {
         require(now >= release_time);
         require(token.balanceOf(msg.sender) > 0);
         uint amount = token.balanceOf(msg.sender);
-        if (!token.transferFrom(msg.sender, this, amount) || !msg.sender.send(amount)) {
-            throw;
-        }
+        require(token.transferFrom(msg.sender, this, amount));
+        msg.sender.transfer(amount);
     }
 }
 
@@ -175,7 +174,7 @@ contract TokenDistribution {
         contributions[msg.sender][bucket] = 0;
         wei_given_to_bucket[bucket] -= contribution;
         total_wei_given -= contribution;
-        require(msg.sender.send(contribution));
+        msg.sender.transfer(contribution);
     }
 
     function close_next_bucket() {
@@ -223,7 +222,7 @@ contract TokenDistribution {
         excess_tokens[bucket] = token_contract;
         ExcessWithdraw withdraw_contract = new ExcessWithdraw(end_time + bucket * (1 weeks), token_contract);
         excess_withdraws[bucket] = withdraw_contract;
-        require(withdraw_contract.send(excess));
+        withdraw_contract.transfer(excess);
     }
 
     // Claim tokens for players and send ether to the owner
@@ -255,14 +254,14 @@ contract PrizePot {
         Token token = dist.token();
         uint256 token_amount = token.balanceOf(msg.sender);
         uint256 wei_amount = this.balance * token_amount / (dist.tokens_to_mint() - token.balanceOf(this));
-        require(token_amount == 0 || token.transferFrom(msg.sender, this, token_amount));
-        require(wei_amount == 0 || msg.sender.send(wei_amount));
+        require(token.transferFrom(msg.sender, this, token_amount));
+        msg.sender.transfer(wei_amount);
     }
 
     function cancel() {
         require(now > dist.end_time());
         require(dist.total_wei_given() < dist.target_in_wei());
-        require(dist.owner().send(this.balance));
+        dist.owner().transfer(this.balance);
     } 
 }
 

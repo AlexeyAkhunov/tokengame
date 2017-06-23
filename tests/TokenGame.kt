@@ -148,7 +148,7 @@ class TokenGame {
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         assertEquals(BigInteger.ZERO, dist.callConstFunction("last_bucket_closed")[0] as BigInteger)
         // 1M gas to be paid to iterate through 100 buckets down to number 0 and close zero bucket
-        assertEquals(BigInteger("1045947"), (bob_balance_before - bob_balance_after)/BigInteger("50000000000"))
+        assertEquals(BigInteger("1029808"), (bob_balance_before - bob_balance_after)/BigInteger("50000000000"))
         // Various intermediate checks
         assertEquals(BigInteger("1000000"), dist.callConstFunction("contributions", bob.address, BigInteger("0"))[0] as BigInteger)
         assertEquals(BigInteger("1000"), dist.callConstFunction("total_wei_accepted")[0] as BigInteger)
@@ -387,7 +387,7 @@ class TokenGame {
         assertTrue(claimResult.isSuccessful)
         val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
         // Prize minus gas cost
-        assertEquals(BigInteger("99998228800000000000"), bob_balance_after-bob_balance_before)
+        assertEquals(BigInteger("99998225500000000000"), bob_balance_after-bob_balance_before)
     }
 
     @Test
@@ -449,5 +449,142 @@ class TokenGame {
     @Test
     fun `lock up too long`() {
         assertFalse(contribute(bob, 1000000000000000000L, 101))
+    }
+
+    @Test
+    fun `mint quantities`() {
+        blockchain.sender = alice
+        val a_token = blockchain.submitNewContract(token)
+        val mintResult1 = a_token.callFunction("mint", bob.address, 1000000L)
+        assertTrue(mintResult1.isSuccessful)
+        assertEquals(BigInteger("1000000"), a_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+        assertEquals(BigInteger("1000000"), a_token.callConstFunction("totalSupply")[0] as BigInteger)
+        blockchain.sender = bob
+        val mintResult2 = a_token.callFunction("mint", bob.address, 1000000L)
+        assertFalse(mintResult2.isSuccessful)
+        blockchain.sender = alice
+        val mintResult3 = a_token.callFunction("mint", bob.address, 2000000L)
+        assertTrue(mintResult3.isSuccessful)
+        assertEquals(BigInteger("3000000"), a_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+        assertEquals(BigInteger("3000000"), a_token.callConstFunction("totalSupply")[0] as BigInteger)
+        val mintResult4 = a_token.callFunction("mint", carol.address, 4000000L)
+        assertTrue(mintResult4.isSuccessful)
+        assertEquals(BigInteger("3000000"), a_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger)
+        assertEquals(BigInteger("4000000"), a_token.callConstFunction("balanceOf", carol.address)[0] as BigInteger)
+        assertEquals(BigInteger("7000000"), a_token.callConstFunction("totalSupply")[0] as BigInteger) 
+    }
+
+    @Test
+    fun `zero contributon`() {
+        assertFalse(contribute(bob, 0, 3))
+    }
+
+    @Test
+    fun `all buckets`() {
+        blockchain.sender = eva
+        blockchain.sendEther(prize_pot.address, BigInteger("100000000000000000000"))
+        for (b in 0..100) {
+            println(b)
+            assertTrue(contribute(bob, 1000000000000000000L + 1000000000000000000L*b, b))
+        }
+        fast_forward_past_end_time(0)
+        val carol_balance_before = blockchain.blockchain.repository.getBalance(carol.address)
+        for (b in 0..100) {
+            assertTrue(close_next_bucket(carol))
+        }
+        assertFalse(close_next_bucket(carol))
+        val carol_balance_after = blockchain.blockchain.repository.getBalance(carol.address)
+        val gas_cost_100_buckets = (carol_balance_before - carol_balance_after + BigInteger("10000000"))/BigInteger("50000000000")
+        // At the gas price 20 GWei, it will cost 2.15 ETH to close 100 buckets
+        assertEquals(BigInteger("107384358"), gas_cost_100_buckets)
+        for (b in 0..100) {
+            assertTrue(claim_tokens(alice, bob, b))
+        }
+        val bob_balance_before = blockchain.blockchain.repository.getBalance(bob.address)
+        blockchain.sender = bob
+        val approveResult = dist_token.callFunction("approve", prize_pot.address, 1000000000000000000L)
+        assertTrue(approveResult.isSuccessful)
+        val bob_balance_inter = blockchain.blockchain.repository.getBalance(bob.address)
+        val claimResult = prize_pot.callFunction("claim_prize")
+        assertTrue(claimResult.isSuccessful)
+        val bob_balance_after = blockchain.blockchain.repository.getBalance(bob.address)
+        // Prize exclusing gas cost of claiming
+        assertEquals(BigInteger("99997475500000000000"), bob_balance_after - bob_balance_inter)
+        assertEquals(BigInteger("99995291400000000000"), bob_balance_after - bob_balance_before)
+    }
+
+    @Test
+    fun `withdraw before time and after time`() {
+        blockchain.sender = alice
+        val a_token = blockchain.submitNewContract(token)
+        val mintResult = a_token.callFunction("mint", bob.address, BigInteger("100000000000000000000"))
+        assertTrue(mintResult.isSuccessful)
+        var block = blockchain.createBlock();
+        // Withdraw only in 200 seconds
+        val withdraw_time = block.header.timestamp + 200L
+        val a_withdraw = blockchain.submitNewContract(excessWithdraw, withdraw_time, a_token.address)
+        blockchain.sendEther(a_withdraw.address, BigInteger("100000000000000000000"))
+        assertEquals(BigInteger("100000000000000000000"), blockchain.blockchain.repository.getBalance(a_withdraw.address))
+        blockchain.sender = bob
+        val approveResult = a_token.callFunction("approve", a_withdraw.address, BigInteger("100000000000000000000"))
+        assertTrue(approveResult.isSuccessful)
+        val bob_balance_before = blockchain.blockchain.repository.getBalance(bob.address)
+        val bob_tokens_before = a_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger
+        var withdrawResult1 = a_withdraw.callFunction("withdraw")
+        assertFalse(withdrawResult1.isSuccessful)
+        val bob_balance_1 = blockchain.blockchain.repository.getBalance(bob.address)
+        val bob_tokens_1 = a_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger
+        // Check token and ETH balance
+        assertEquals(BigInteger("100000000000000000000"), bob_tokens_before)
+        assertEquals(BigInteger("100000000000000000000"), bob_tokens_1)
+        // Burnt a lot of gas!
+        assertEquals(BigInteger("5000000"), (bob_balance_before - bob_balance_1)/BigInteger("50000000000"))
+        while (block.header.timestamp < withdraw_time) {
+            block = blockchain.createBlock()
+        }
+        var withdrawResult2 = a_withdraw.callFunction("withdraw")
+        assertTrue(withdrawResult2.isSuccessful)
+        val bob_balance_2 = blockchain.blockchain.repository.getBalance(bob.address)
+        val bob_tokens_2 = a_token.callConstFunction("balanceOf", bob.address)[0] as BigInteger
+        assertEquals(BigInteger.ZERO, bob_tokens_2)
+        // 10 ETH minus gas cost
+        assertEquals(BigInteger("99998301200000000000"), bob_balance_2 - bob_balance_1)
+    }
+
+    @Test
+    fun `withdraw not approved`() {
+         blockchain.sender = alice
+        val a_token = blockchain.submitNewContract(token)
+        val mintResult = a_token.callFunction("mint", bob.address, BigInteger("100000000000000000000"))
+        assertTrue(mintResult.isSuccessful)
+        var block = blockchain.createBlock();
+        // Withdraw only in 200 seconds
+        val withdraw_time = block.header.timestamp
+        val a_withdraw = blockchain.submitNewContract(excessWithdraw, withdraw_time, a_token.address)
+        blockchain.sendEther(a_withdraw.address, BigInteger("100000000000000000000"))
+        assertEquals(BigInteger("100000000000000000000"), blockchain.blockchain.repository.getBalance(a_withdraw.address))
+        blockchain.sender = bob     
+        var withdrawResult1 = a_withdraw.callFunction("withdraw")
+        assertFalse(withdrawResult1.isSuccessful)
+        // Approved by not enough
+        val approveResult2 = a_token.callFunction("approve", a_withdraw.address, BigInteger("50000000000000000000"))
+        assertTrue(approveResult2.isSuccessful)
+        var withdrawResult2 = a_withdraw.callFunction("withdraw")
+        assertFalse(withdrawResult2.isSuccessful)
+        // Approved enough
+        val approveResult3 = a_token.callFunction("approve", a_withdraw.address, BigInteger("100000000000000000000"))
+        assertTrue(approveResult3.isSuccessful)
+        var withdrawResult3 = a_withdraw.callFunction("withdraw")
+        assertTrue(withdrawResult3.isSuccessful)
+    }
+
+    @Test
+    fun `escape not payable`() {
+        assertTrue(contribute(bob, 1000000L, 1))
+        blockchain.sender = bob
+        var escapeResult1 = dist.callFunction(10000000L, "escape", 1)
+        assertFalse(escapeResult1.isSuccessful)
+        var escapeResult2 = dist.callFunction("escape", 1)
+        assertTrue(escapeResult2.isSuccessful)
     }
 }

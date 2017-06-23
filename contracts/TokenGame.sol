@@ -37,17 +37,15 @@ contract Token {
         return true;
     }
 
-    uint public id; /* To ensure distinct contracts for different tokens owned by the same owner */
-    address public owner;
+    address public minter;
 
-    function Token(uint _id) {
-        owner = msg.sender;
-        id = _id;
+    function Token() {
+        minter = msg.sender;
     }
 
     /* Allows the owner to mint more tokens */
     function mint(address _to, uint256 _value) returns (bool) {
-        require(msg.sender == owner);                        // Only the owner is allowed to mint
+        require(msg.sender == minter);                       // Only the minter is allowed to mint
         require(balanceOf[_to] + _value >= balanceOf[_to]);  // Check for overflows
         balanceOf[_to] += _value;
         totalSupply += _value;
@@ -115,7 +113,7 @@ contract TokenDistribution {
         cap_in_wei = _cap_in_wei;
         cap_remainder = _cap_in_wei;
         tokens_to_mint = _tokens_to_mint;
-        token = new Token(MAX_LOCK_WEEKS + 1);
+        token = new Token();
         end_time = now + INITIAL_DURATION;
     }
 
@@ -218,7 +216,7 @@ contract TokenDistribution {
     }
 
     function move_excess_for_bucket(uint256 bucket, uint256 excess) private {
-        Token token_contract = new Token(bucket);
+        Token token_contract = new Token();
         excess_tokens[bucket] = token_contract;
         ExcessWithdraw withdraw_contract = new ExcessWithdraw(end_time + bucket * (1 weeks), token_contract);
         excess_withdraws[bucket] = withdraw_contract;
